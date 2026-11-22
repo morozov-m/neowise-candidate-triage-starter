@@ -3,18 +3,63 @@ import { readFile } from "node:fs/promises";
 import { classify } from "./mock-ai.mjs";
 
 const html = await readFile(new URL("./index.html", import.meta.url));
+const ALLOWED_TOPICS = new Set(["delivery", "pricing", "other"]);
+const MODEL_TIMEOUT_MS = 300;
 
 function json(response, status, body) {
   response.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
   response.end(JSON.stringify(body));
 }
 
-async function handleTriage(request, response) {
+function manualReview(response) {
+  return json(response, 200, { status: "manual_review", topic: null, draft: null });
+}
+
+async function readBody(request) {
   const chunks = [];
   for await (const chunk of request) chunks.push(chunk);
-  const { text } = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-  const result = JSON.parse(await classify(text));
-  return json(response, 200, { status: "ready", ...result });
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+async function handleTriage(request, response) {
+  let payload;
+  try {
+    payload = JSON.parse(await readBody(request));
+  } catch {
+    return json(response, 400, { status: "invalid_input" });
+  }
+
+  const text = payload?.text;
+  if (typeof text !== "string" || text.trim() === "") {
+    return json(response, 400, { status: "invalid_input" });
+  }
+
+  let raw;
+  try {
+    raw = await classify(text, { signal: AbortSignal.timeout(MODEL_TIMEOUT_MS) });
+  } catch {
+    return manualReview(response);
+  }
+
+  let result;
+  try {
+    result = JSON.parse(raw);
+  } catch {
+    return manualReview(response);
+  }
+
+  const topic = result?.topic;
+  const draft = result?.draft;
+  if (
+    typeof topic !== "string" ||
+    !ALLOWED_TOPICS.has(topic) ||
+    typeof draft !== "string" ||
+    draft.trim() === ""
+  ) {
+    return manualReview(response);
+  }
+
+  return json(response, 200, { status: "ready", topic, draft });
 }
 
 createServer(async (request, response) => {

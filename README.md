@@ -12,6 +12,44 @@ node server.mjs
 
 Откройте http://127.0.0.1:3000. Порт можно задать через переменную `PORT`.
 
+## Тест
+
+Сервер поднимается самим тестовым скриптом.
+
+### Общий
+
+Все сценарии подряд:
+
+```sh
+node test-triage.mjs
+```
+
+или:
+
+```sh
+node test-triage.mjs all
+```
+
+Ожидается несколько строк `ok: …` и в конце `ok: all triage tests passed`.
+
+### Отдельные
+
+Один сценарий за раз:
+
+```sh
+node test-triage.mjs timeout
+node test-triage.mjs invalid
+node test-triage.mjs ready
+node test-triage.mjs bad-topic
+```
+
+| Команда | Что проверяет |
+| --- | --- |
+| `timeout` | сбой по таймауту → `manual_review` |
+| `invalid` | пустой ввод → `invalid_input` |
+| `ready` | заявка про доставку → `ready` |
+| `bad-topic` | недопустимая тема → `manual_review` |
+
 ## Что изменить
 
 1. Доработайте `POST /api/triage`. Принимайте JSON с полем `text`, содержащим непустую строку. При пустом, отсутствующем, нестроковом вводе или битом JSON верните HTTP 400 и `{"status":"invalid_input"}`.
