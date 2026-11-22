@@ -14,13 +14,41 @@ node server.mjs
 
 ## Тест
 
-Проверка ответа при сбое модели (таймаут → ручной разбор). Сервер поднимается самим тестом:
+Сервер поднимается самим тестовым скриптом.
+
+### Общий
+
+Все сценарии подряд:
 
 ```sh
 node test-triage.mjs
 ```
 
-Ожидается строка `ok: timeout failure returns manual_review`.
+или:
+
+```sh
+node test-triage.mjs all
+```
+
+Ожидается несколько строк `ok: …` и в конце `ok: all triage tests passed`.
+
+### Отдельные
+
+Один сценарий за раз:
+
+```sh
+node test-triage.mjs timeout
+node test-triage.mjs invalid
+node test-triage.mjs ready
+node test-triage.mjs bad-topic
+```
+
+| Команда | Что проверяет |
+| --- | --- |
+| `timeout` | сбой по таймауту → `manual_review` |
+| `invalid` | пустой ввод → `invalid_input` |
+| `ready` | заявка про доставку → `ready` |
+| `bad-topic` | недопустимая тема → `manual_review` |
 
 ## Что изменить
 

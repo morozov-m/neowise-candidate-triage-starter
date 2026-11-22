@@ -25,6 +25,72 @@ async function waitForServer(timeoutMs = 5000) {
   throw new Error("Server did not start in time");
 }
 
+async function postTriage(text) {
+  const reply = await fetch(`${BASE}/api/triage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  return { status: reply.status, body: await reply.json() };
+}
+
+async function testTimeoutManualReview() {
+  const { status, body } = await postTriage("Заявка с меткой [timeout]");
+  assert(status === 200, `expected HTTP 200, got ${status}`);
+  assert(body.status === "manual_review", `expected manual_review, got ${body.status}`);
+  assert(body.topic === null, `expected topic null, got ${body.topic}`);
+  assert(body.draft === null, `expected draft null, got ${body.draft}`);
+  console.log("ok: timeout failure returns manual_review");
+}
+
+async function testInvalidInput() {
+  const reply = await fetch(`${BASE}/api/triage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: "   " }),
+  });
+  const body = await reply.json();
+  assert(reply.status === 400, `expected HTTP 400, got ${reply.status}`);
+  assert(body.status === "invalid_input", `expected invalid_input, got ${body.status}`);
+  console.log("ok: blank text returns invalid_input");
+}
+
+async function testReadyDelivery() {
+  const { status, body } = await postTriage("Нужна помощь с доставкой заказа");
+  assert(status === 200, `expected HTTP 200, got ${status}`);
+  assert(body.status === "ready", `expected ready, got ${body.status}`);
+  assert(body.topic === "delivery", `expected delivery, got ${body.topic}`);
+  assert(typeof body.draft === "string" && body.draft.trim() !== "", "expected non-empty draft");
+  console.log("ok: delivery request returns ready");
+}
+
+async function testBadTopicManualReview() {
+  const { status, body } = await postTriage("Заявка с меткой [bad-topic]");
+  assert(status === 200, `expected HTTP 200, got ${status}`);
+  assert(body.status === "manual_review", `expected manual_review, got ${body.status}`);
+  assert(body.topic === null, `expected topic null, got ${body.topic}`);
+  assert(body.draft === null, `expected draft null, got ${body.draft}`);
+  console.log("ok: bad topic returns manual_review");
+}
+
+const tests = {
+  timeout: testTimeoutManualReview,
+  invalid: testInvalidInput,
+  ready: testReadyDelivery,
+  "bad-topic": testBadTopicManualReview,
+};
+
+async function runAll() {
+  for (const run of Object.values(tests)) await run();
+  console.log("ok: all triage tests passed");
+}
+
+const name = process.argv[2];
+if (name && name !== "all" && !tests[name]) {
+  console.error(`Unknown test "${name}". Use: all | ${Object.keys(tests).join(" | ")}`);
+  process.exit(1);
+}
+
 const server = spawn(process.execPath, ["server.mjs"], {
   cwd: root,
   env: { ...process.env, PORT: String(PORT) },
@@ -33,20 +99,9 @@ const server = spawn(process.execPath, ["server.mjs"], {
 
 try {
   await waitForServer();
-
-  const reply = await fetch(`${BASE}/api/triage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text: "Заявка с меткой [timeout]" }),
-  });
-  const body = await reply.json();
-
-  assert(reply.status === 200, `expected HTTP 200, got ${reply.status}`);
-  assert(body.status === "manual_review", `expected manual_review, got ${body.status}`);
-  assert(body.topic === null, `expected topic null, got ${body.topic}`);
-  assert(body.draft === null, `expected draft null, got ${body.draft}`);
-
-  console.log("ok: timeout failure returns manual_review");
+  if (!name || name === "all") await runAll();
+  else await tests[name]();
 } finally {
   server.kill();
 }
+
